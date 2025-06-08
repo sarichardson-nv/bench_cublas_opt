@@ -29,3 +29,10 @@ target_link_libraries(bench_cublas PRIVATE
         CUDA::cublas
         Thrust::Thrust
 )
+
+
+
+add_executable(understanding_loaders understand_cub_loaders.cu)
+
+
+target_link_libraries(understanding_loaders PRIVATE Thrust::Thrust)

@@ -19,8 +19,8 @@ __global__ void tiny_batched_gemm(Sca *__restrict__ a, Sca *__restrict__ b, Sca 
 
     using Matrix = Eigen::Matrix<Sca, MatrixDim, MatrixDim, Flags>;
 
-    using Load = cub::BlockLoad<Sca, BlockSize, matrix_size, cub::BLOCK_LOAD_DIRECT>;
-    using Store = cub::BlockStore<Sca, BlockSize, matrix_size, cub::BLOCK_STORE_DIRECT>;
+    using Load = cub::BlockLoad<Sca, BlockSize, matrix_size, cub::BLOCK_LOAD_TRANSPOSE>;
+    using Store = cub::BlockStore<Sca, BlockSize, matrix_size, cub::BLOCK_STORE_TRANSPOSE>;
 
     using SMem = union {
         typename Load::TempStorage load_tmp;
@@ -44,10 +44,12 @@ __global__ void tiny_batched_gemm(Sca *__restrict__ a, Sca *__restrict__ b, Sca 
         Load(shared_mem.load_tmp).Load(b + block_i * block_stride, *reinterpret_cast<ThreadArray *>(B.data()));
         __syncthreads();
         Load(shared_mem.load_tmp).Load(c + block_i * block_stride, *reinterpret_cast<ThreadArray *>(C.data()));
+        __syncthreads();
 
         C = alpha * A * B + beta * C;
 
         Store(shared_mem.store_tmp).Store(c + block_i * block_stride, *reinterpret_cast<ThreadArray *>(C.data()));
+        __syncthreads();
     }
 }
 
@@ -175,6 +177,7 @@ __global__ void small_batched_cooperative_gemm(Sca *__restrict__ a, Sca *__restr
      */
     using Matrix = Eigen::Matrix<Sca, matrix_dim, matrix_dim, Flags>;
 
+    using Load = cub::WarpLoad<Sca, matrix_size, cub::WARP_LOAD_TRANSPOSE, threads_per_matrix>;
 
 
     const auto lane = threadIdx.x % threads_per_matrix;
