@@ -3,10 +3,16 @@
 #include <benchmark/benchmark.h>
 #include <cub/block/block_load.cuh>
 #include <cub/block/block_store.cuh>
+#include <cub/cub.cuh>
 #include <cub/warp/warp_load.cuh>
 #include <cub/warp/warp_store.cuh>
 #include <Eigen/Core>
 #include <thrust/device_vector.h>
+#include <thrust/system/cuda/vector.h>
+
+#ifdef USE_CUTLASS
+#include <cutlass/gemm/device/gemm_batched.h>
+#endif
 
 
 template<typename Sca, int MatrixDim, int BlockSize = 256, int Flags = Eigen::RowMajor>
@@ -122,6 +128,32 @@ static void bench_tiny_batched_gemm_3x3_cm(benchmark::State &state) {
 
 BENCHMARK(bench_tiny_batched_gemm_3x3_cm)->Arg(1024 << 5);
 
+
+template <typename T, unsigned MatrixDim, unsigned BlockSize>
+__device__ __forceinline__
+void vectorized_copy(T* __restrict dst_ptr, const T* __restrict src_ptr) {
+
+    constexpr auto vector_size = 16 / sizeof(T); // vectors are 128 bits
+    constexpr auto matrix_size = MatrixDim * MatrixDim;
+    constexpr auto block_size = BlockSize;
+    constexpr auto smem_size = BlockSize * matrix_size;
+
+    // I'm just assuming that smem_size is an exact multiple of vector_size
+    constexpr auto n_vector_loads = smem_size / vector_size;
+
+    using Vector = cub::CubVector<T, vector_size>;
+
+    auto* in_ptr = reinterpret_cast<const Vector *>(src_ptr);
+    auto* out_ptr = reinterpret_cast<Vector *>(dst_ptr);
+
+    for (unsigned i=threadIdx.x; i<n_vector_loads; i+=blockDim.x) {
+        out_ptr[i] = in_ptr[i];
+    }
+}
+
+
+
+
 /**
  * @brief compute batched gemm operations on small matrices cooperatively
  *
@@ -177,10 +209,12 @@ __global__ void small_batched_cooperative_gemm(Sca *__restrict__ a, Sca *__restr
      */
     using Matrix = Eigen::Matrix<Sca, matrix_dim, matrix_dim, Flags>;
 
-    using Load = cub::WarpLoad<Sca, matrix_size, cub::WARP_LOAD_TRANSPOSE, threads_per_matrix>;
+    constexpr auto shared_memory_size = matrices_per_block * matrix_size;
 
+    __shared__ Sca shared_mem[shared_memory_size];
 
     const auto lane = threadIdx.x % threads_per_matrix;
+    const auto warp_id = threadIdx.x / threads_per_matrix;
     const auto block_row = lane / NThreadsPerDim;
     const auto block_col = lane % NThreadsPerDim;
 
@@ -205,6 +239,47 @@ __global__ void small_batched_cooperative_gemm(Sca *__restrict__ a, Sca *__restr
 
         C_tile.setZero();
 
+        /*
+         * We have to lead the data into the matrix tiles A_tile and B_tile.
+         *
+         * This is a two-stage process, first loading data into shared memory and then
+         * performing a second load into thread-local data. This is so that the first
+         * stage can benefit from coalesced and vectorized loads from global memory,
+         * improving the memory bandwidth. We've written a little function that
+         * performs these vectorized, coalesced loads, although this needs some work
+         * to address the more general case. The remaining part is to take the tile
+         * data from each matrix in to the temporary matrices. To keep this simple,
+         * we assume the tiles are arranged using the same ordering as the matrix itself.
+         * This means we load matrix_size elements from shared memory at offset given
+         * by both the warp_id, and the block indices bi and bj.
+         */
+        do {
+            vectorized_copy<Sca, MatrixDim, BlockSize>(shared_mem, start_of_a_block);
+            __syncthreads();
+
+            for (int i=0; i<matrix_dim; ++i) {
+                for (int j=0; j<matrix_dim; ++j) {
+                    A_tile(i, j) = shared_mem[
+                        warp_id * full_matrix_size + full_matrix_dim * (block_row * matrix_dim + i) + block_col * matrix_dim + j
+                        ];
+                }
+            }
+            __syncthreads();
+        } while (false);
+        do {
+            vectorized_copy<Sca, MatrixDim, BlockSize>(shared_mem, start_of_b_block);
+            __syncthreads();
+
+            for (int i=0; i<matrix_dim; ++i) {
+                for (int j=0; j<matrix_dim; ++j) {
+                    B_tile(i, j) = shared_mem[
+                        warp_id * full_matrix_size + full_matrix_dim * (block_row * matrix_dim + i) + block_col * matrix_dim + j
+                        ];
+                }
+            }
+            __syncthreads();
+        } while (false);
+
 
         for (unsigned tile_idx=0; tile_idx < threads_per_dim; tile_idx++) {
 
@@ -213,7 +288,7 @@ __global__ void small_batched_cooperative_gemm(Sca *__restrict__ a, Sca *__restr
                     auto rhs_val = __shfl_sync(thread_mask, B_tile(k, j), lane1, threads_per_matrix);
 
                     for (unsigned i=0; i<matrix_dim; ++i) {
-                        C_tile += A_tile(i, k)*rhs_val;
+                        C_tile(i, j) += A_tile(i, k)*rhs_val;
                     }
                 }
             }
@@ -238,17 +313,77 @@ __global__ void small_batched_cooperative_gemm(Sca *__restrict__ a, Sca *__restr
          */
 
         // read C into A_tile
+        do {
+            vectorized_copy<Sca, MatrixDim, BlockSize>(shared_mem, start_of_c_block);
+            __syncthreads();
+
+            for (int i=0; i<matrix_dim; ++i) {
+                for (int j=0; j<matrix_dim; ++j) {
+                    A_tile(i, j) = shared_mem[
+                        warp_id * full_matrix_size + full_matrix_dim * (block_row * matrix_dim + i) + block_col * matrix_dim + j
+                        ];
+                }
+            }
+            __syncthreads();
+        } while (false);
 
         B_tile.noalias() = beta*A_tile + alpha*C_tile;
 
-
         // write B_tile back to C
+        do {
+            for (int i=0; i<matrix_dim; ++i) {
+                for (int j=0; j<matrix_dim; ++j) {
+                    shared_mem[
+                        warp_id * full_matrix_size + full_matrix_dim * (block_row * matrix_dim + i) + block_col * matrix_dim + j
+                        ] = B_tile(i, j);
+                }
+            }
+
+            __syncthreads();
+            vectorized_copy<Sca, MatrixDim, BlockSize>(start_of_c_block, shared_mem);
+        } while (false);
+
 
     }
+}
 
+
+inline constexpr auto small_batched_cooperative_gemm_4x4_rm = small_batched_cooperative_gemm<float, 4, 2, 256, Eigen::RowMajor>;
+inline constexpr auto small_batched_cooperative_gemm_4x4_cm = small_batched_cooperative_gemm<float, 4, 2, 256, Eigen::ColMajor>;
+
+static void bench_small_batched_cooperative_gemm_4x4_rm(benchmark::State &state) {
+    constexpr int dim = 4;
+    constexpr int size = 16;
+    auto n_matrices = static_cast<int>(state.range(0));
+
+
+    thrust::device_vector<float> a(size * n_matrices, 1.0f);
+    thrust::device_vector<float> b(size * n_matrices, 1.0f);
+    thrust::device_vector<float> c(size * n_matrices, 0.0f);
+
+
+    for (auto _: state) {
+        const auto threads = 256;
+        const auto blocks = (n_matrices + threads - 1) / threads;
+
+        float alpha = 1.0;
+        float beta = 0.0;
+
+        small_batched_cooperative_gemm_4x4_rm<<<blocks, threads>>>(
+            raw_pointer_cast(a.data()),
+            raw_pointer_cast(b.data()),
+            raw_pointer_cast(c.data()),
+            alpha,
+            beta,
+            n_matrices);
+
+
+        cudaDeviceSynchronize();
+    }
 
 }
 
+BENCHMARK(bench_small_batched_cooperative_gemm_4x4_rm)->Arg(1024<<5);
 
 static void bench_cublas_3x3_rm(benchmark::State &state) {
     constexpr int dim = 3;
@@ -363,6 +498,141 @@ static void bench_cublas_3x3_cm(benchmark::State &state) {
 }
 
 BENCHMARK(bench_cublas_3x3_cm)->Arg(1024 << 5);
+
+
+
+
+
+#ifdef USE_CUTLASS
+
+static void bench_cutlass_3x3_rm(benchmark::State &state) {
+
+    // CUTLASS GEMM Configuration (You can adjust these parameters)
+    using CutlassBatchedGemm = cutlass::gemm::device::GemmBatched<
+        float,                             // Element type for A matrix
+        cutlass::layout::RowMajor,         // Layout of A matrix
+        float,                             // Element type for B matrix
+        cutlass::layout::RowMajor,         // Layout of B matrix
+        float,                             // Element type for C/D matrix
+        cutlass::layout::RowMajor>;         // Layout of C/D matrix
+
+
+   constexpr int matrixDim = 3; // Matrix dimensions: 3x3
+    constexpr int matrix_size = matrixDim * matrixDim;
+    const int n_matrices = static_cast<int>(state.range(0));
+
+    // Allocate data for A, B, and C matrices
+    thrust::device_vector<float> A(matrix_size * n_matrices, 1.0f); // Initialize all to 1.0
+    thrust::device_vector<float> B(matrix_size * n_matrices, 1.0f); // Initialize all to 1.0
+    thrust::device_vector<float> C(matrix_size * n_matrices, 0.0f); // Initialize all to 0.0
+
+    const float alpha = 1.0f; // Scalar multiplier for A * B
+    const float beta = 0.0f;  // Scalar multiplier for C
+
+    // CUTLASS Batched GEMM arguments
+    typename CutlassBatchedGemm::Arguments arguments(
+        {matrixDim, matrixDim, matrixDim},  // Problem size (M, N, K)
+        {raw_pointer_cast(A.data()), matrixDim}, // Pointer and leading dimension of A
+         matrix_size,
+        {raw_pointer_cast(B.data()), matrixDim}, // Pointer and leading dimension of B
+         matrix_size,
+        {raw_pointer_cast(C.data()), matrixDim}, // Pointer and leading dimension of C
+         matrix_size,
+        {raw_pointer_cast(C.data()), matrixDim}, // Pointer and leading dimension of D
+         matrix_size,
+        {alpha, beta},                           // Scalars alpha and beta
+        n_matrices                               // Number of matrices (batch size)
+    );
+
+    // Create an instance of Batched GEMM
+    CutlassBatchedGemm batched_gemm_op;
+
+    // Check if the given configuration is supported
+    cutlass::Status status = batched_gemm_op.can_implement(arguments);
+    if (status != cutlass::Status::kSuccess) {
+        throw std::runtime_error("CUTLASS BatchedGemm configuration is not supported!");
+    }
+
+    for (auto _ : state) {
+        // Launch the CUTLASS Batched GEMM operation
+        status = batched_gemm_op(arguments);
+        if (status != cutlass::Status::kSuccess) {
+            throw std::runtime_error("CUTLASS BatchedGemm execution failed!");
+        }
+
+        // Ensure computation completes before proceeding
+        // cudaDeviceSynchronize();
+    }
+
+}
+
+BENCHMARK(bench_cutlass_3x3_rm)->Arg(1024 << 5);
+
+
+
+static void bench_cutlass_3x3_cm(benchmark::State &state) {
+
+    // CUTLASS GEMM Configuration (You can adjust these parameters)
+    using CutlassBatchedGemm = cutlass::gemm::device::GemmBatched<
+        float,                             // Element type for A matrix
+        cutlass::layout::ColumnMajor,         // Layout of A matrix
+        float,                             // Element type for B matrix
+        cutlass::layout::ColumnMajor,         // Layout of B matrix
+        float,                             // Element type for C/D matrix
+        cutlass::layout::ColumnMajor>;         // Layout of C/D matrix
+
+
+   constexpr int matrixDim = 3; // Matrix dimensions: 3x3
+    constexpr int matrix_size = matrixDim * matrixDim;
+    const int n_matrices = static_cast<int>(state.range(0));
+
+    // Allocate data for A, B, and C matrices
+    thrust::device_vector<float> A(matrix_size * n_matrices, 1.0f); // Initialize all to 1.0
+    thrust::device_vector<float> B(matrix_size * n_matrices, 1.0f); // Initialize all to 1.0
+    thrust::device_vector<float> C(matrix_size * n_matrices, 0.0f); // Initialize all to 0.0
+
+    const float alpha = 1.0f; // Scalar multiplier for A * B
+    const float beta = 0.0f;  // Scalar multiplier for C
+
+    // CUTLASS Batched GEMM arguments
+    typename CutlassBatchedGemm::Arguments arguments(
+        {matrixDim, matrixDim, matrixDim},  // Problem size (M, N, K)
+        {raw_pointer_cast(A.data()), matrixDim}, // Pointer and leading dimension of A
+         matrix_size,
+        {raw_pointer_cast(B.data()), matrixDim}, // Pointer and leading dimension of B
+         matrix_size,
+        {raw_pointer_cast(C.data()), matrixDim}, // Pointer and leading dimension of C
+         matrix_size,
+        {raw_pointer_cast(C.data()), matrixDim}, // Pointer and leading dimension of D
+         matrix_size,
+        {alpha, beta},                           // Scalars alpha and beta
+        n_matrices                               // Number of matrices (batch size)
+    );
+
+    // Create an instance of Batched GEMM
+    CutlassBatchedGemm batched_gemm_op;
+
+    // Check if the given configuration is supported
+    cutlass::Status status = batched_gemm_op.can_implement(arguments);
+    if (status != cutlass::Status::kSuccess) {
+        throw std::runtime_error("CUTLASS BatchedGemm configuration is not supported!");
+    }
+
+    for (auto _ : state) {
+        // Launch the CUTLASS Batched GEMM operation
+        status = batched_gemm_op(arguments);
+        if (status != cutlass::Status::kSuccess) {
+            throw std::runtime_error("CUTLASS BatchedGemm execution failed!");
+        }
+
+        // Ensure computation completes before proceeding
+        // cudaDeviceSynchronize();
+    }
+
+}
+
+BENCHMARK(bench_cutlass_3x3_rm)->Arg(1024 << 5);
+#endif
 
 
 BENCHMARK_MAIN();
