@@ -131,7 +131,7 @@ BENCHMARK(bench_tiny_batched_gemm_3x3_cm)->Arg(1024 << 5);
 
 template <typename T, unsigned MatrixDim, unsigned BlockSize>
 __device__ __forceinline__
-void vectorized_copy(T* __restrict dst_ptr, const T* __restrict src_ptr) {
+void vectorized_copy(T* __restrict dst_ptr, const T* __restrict src_ptr, unsigned n_matrices) {
 
     constexpr auto vector_size = 16 / sizeof(T); // vectors are 128 bits
     constexpr auto matrix_size = MatrixDim * MatrixDim;
@@ -139,7 +139,7 @@ void vectorized_copy(T* __restrict dst_ptr, const T* __restrict src_ptr) {
     constexpr auto smem_size = BlockSize * matrix_size;
 
     // I'm just assuming that smem_size is an exact multiple of vector_size
-    constexpr auto n_vector_loads = smem_size / vector_size;
+    const auto n_vector_loads = n_matrices / vector_size;
 
     using Vector = cub::CubVector<T, vector_size>;
 
@@ -209,7 +209,7 @@ __global__ void small_batched_cooperative_gemm(Sca *__restrict__ a, Sca *__restr
      */
     using Matrix = Eigen::Matrix<Sca, matrix_dim, matrix_dim, Flags>;
 
-    constexpr auto shared_memory_size = matrices_per_block * matrix_size;
+    constexpr auto shared_memory_size = matrices_per_block * full_matrix_size;
 
     __shared__ Sca shared_mem[shared_memory_size];
 
@@ -254,7 +254,7 @@ __global__ void small_batched_cooperative_gemm(Sca *__restrict__ a, Sca *__restr
          * by both the warp_id, and the block indices bi and bj.
          */
         do {
-            vectorized_copy<Sca, MatrixDim, BlockSize>(shared_mem, start_of_a_block);
+            vectorized_copy<Sca, MatrixDim, BlockSize>(shared_mem, start_of_a_block, matrices_per_block);
             __syncthreads();
 
             for (int i=0; i<matrix_dim; ++i) {
@@ -267,7 +267,7 @@ __global__ void small_batched_cooperative_gemm(Sca *__restrict__ a, Sca *__restr
             __syncthreads();
         } while (false);
         do {
-            vectorized_copy<Sca, MatrixDim, BlockSize>(shared_mem, start_of_b_block);
+            vectorized_copy<Sca, MatrixDim, BlockSize>(shared_mem, start_of_b_block, matrices_per_block);
             __syncthreads();
 
             for (int i=0; i<matrix_dim; ++i) {
@@ -314,7 +314,7 @@ __global__ void small_batched_cooperative_gemm(Sca *__restrict__ a, Sca *__restr
 
         // read C into A_tile
         do {
-            vectorized_copy<Sca, MatrixDim, BlockSize>(shared_mem, start_of_c_block);
+            vectorized_copy<Sca, MatrixDim, BlockSize>(shared_mem, start_of_c_block, matrices_per_block);
             __syncthreads();
 
             for (int i=0; i<matrix_dim; ++i) {
@@ -340,7 +340,7 @@ __global__ void small_batched_cooperative_gemm(Sca *__restrict__ a, Sca *__restr
             }
 
             __syncthreads();
-            vectorized_copy<Sca, MatrixDim, BlockSize>(start_of_c_block, shared_mem);
+            vectorized_copy<Sca, MatrixDim, BlockSize>(start_of_c_block, shared_mem, matrices_per_block);
         } while (false);
 
 
