@@ -129,6 +129,40 @@ static void bench_tiny_batched_gemm_3x3_cm(benchmark::State &state) {
 BENCHMARK(bench_tiny_batched_gemm_3x3_cm)->Arg(1024 << 5);
 
 
+static void bench_tiny_batched_gemm_4x4_rm(benchmark::State &state) {
+    constexpr int dim = 4;
+    constexpr int size = dim * dim;
+    const auto n_matrices = static_cast<int>(state.range(0));
+
+
+    thrust::device_vector<float> a(size * n_matrices);
+    thrust::device_vector<float> b(size * n_matrices);
+    thrust::device_vector<float> c(size * n_matrices);
+
+    for (auto _: state) {
+        const auto threads = 256;
+        const auto blocks = (n_matrices + threads - 1) / threads;
+
+        float alpha = 1.0;
+        float beta = 0.0;
+
+
+        tiny_batched_gemm_3x3_rm<<<blocks, threads>>>(
+            raw_pointer_cast(a.data()),
+            raw_pointer_cast(b.data()),
+            raw_pointer_cast(c.data()),
+            alpha,
+            beta,
+            n_matrices);
+
+
+        cudaDeviceSynchronize();
+    }
+}
+
+BENCHMARK(bench_tiny_batched_gemm_4x4_rm)->Arg(1024 << 5);
+
+
 template <typename T, unsigned MatrixDim, unsigned BlockSize>
 __device__ __forceinline__
 void vectorized_copy(T* __restrict dst_ptr, const T* __restrict src_ptr, unsigned n_matrices) {
@@ -346,6 +380,7 @@ __global__ void small_batched_cooperative_gemm(Sca *__restrict__ a, Sca *__restr
 
     }
 }
+
 
 
 inline constexpr auto small_batched_cooperative_gemm_4x4_rm = small_batched_cooperative_gemm<float, 4, 2, 256, Eigen::RowMajor>;
