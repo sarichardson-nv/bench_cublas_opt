@@ -15,6 +15,33 @@
 #endif
 
 
+template <typename T, unsigned MatrixDim, unsigned BlockSize>
+__device__ __forceinline__
+void vectorized_copy(T* __restrict dst_ptr, const T* __restrict src_ptr, unsigned n_matrices) {
+
+    constexpr auto vector_size = 16 / sizeof(T); // vectors are 128 bits
+    constexpr auto matrix_size = MatrixDim * MatrixDim;
+    constexpr auto block_size = BlockSize;
+    constexpr auto smem_size = BlockSize * matrix_size;
+
+    // I'm just assuming that smem_size is an exact multiple of vector_size
+    const auto n_vector_loads = n_matrices / vector_size;
+
+    using Vector = cub::CubVector<T, vector_size>;
+
+    auto* in_ptr = reinterpret_cast<const Vector *>(src_ptr);
+    auto* out_ptr = reinterpret_cast<Vector *>(dst_ptr);
+
+    for (unsigned i=threadIdx.x; i<n_vector_loads; i+=blockDim.x) {
+        out_ptr[i] = in_ptr[i];
+    }
+}
+
+
+
+
+
+
 template<typename Sca, int MatrixDim, int BlockSize = 256, int Flags = Eigen::RowMajor>
 __global__ void tiny_batched_gemm(Sca *__restrict__ a, Sca *__restrict__ b, Sca *__restrict__ c, float alpha,
                                   float beta,
@@ -57,6 +84,66 @@ __global__ void tiny_batched_gemm(Sca *__restrict__ a, Sca *__restrict__ b, Sca 
         Store(shared_mem.store_tmp).Store(c + block_i * block_stride, *reinterpret_cast<ThreadArray *>(C.data()));
         __syncthreads();
     }
+}
+
+
+template<typename Sca, int MatrixDim, int BlockSize = 256, int Flags = Eigen::RowMajor>
+__global__ void tiny_batched_gemm_cls(Sca *__restrict__ a, Sca *__restrict__ b, Sca *__restrict__ c, float alpha,
+                                  float beta,
+                                  unsigned n_matrices) {
+    constexpr int matrix_dim = MatrixDim;
+    constexpr int matrix_size = MatrixDim * MatrixDim;
+    constexpr int block_stride = BlockSize * matrix_size;
+
+
+    using Matrix = Eigen::Matrix<Sca, MatrixDim, MatrixDim, Flags>;
+
+
+    // ReSharper disable once CppTooWideScope
+    __shared__ Sca shared_mem[BlockSize * matrix_size];
+
+    Matrix A;
+    Matrix B;
+    Matrix C;
+
+    auto load = [&](Matrix& dst, const Sca* ptr) {
+        vectorized_copy<float, MatrixDim, BlockSize>(shared_mem, ptr, BlockSize);
+
+        __syncthreads();
+        for (int i=0; i<MatrixDim; ++i) {
+            for (int j=0; j<MatrixDim; ++j){ 
+                dst(i, j) = shared_mem[threadIdx.x * matrix_size + i * matrix_dim + j];
+            }
+        }
+        __syncthreads();
+    };
+
+    auto store = [&](const Matrix& src, Sca* dst) {
+        for (int i=0; i<MatrixDim; ++i) {
+            for (int j=0; j<MatrixDim; ++j){ 
+                shared_mem[threadIdx.x * matrix_size + i * matrix_dim + j] = src(i, j);
+            }
+        }
+        __syncthreads();
+
+        vectorized_copy<float, MatrixDim, BlockSize>(dst, shared_mem, BlockSize);
+        __syncthreads();
+    };
+
+    using ThreadArray = Sca[matrix_size];
+
+    const auto n_blocks = (n_matrices + BlockSize - 1) / BlockSize;
+
+    for (unsigned block_i = blockIdx.x; block_i < n_blocks; block_i += gridDim.x) {
+        load(A, a + block_i * block_stride);
+        load(B, b + block_i * block_stride);
+        load(C, c + block_i * block_stride);
+
+        C = alpha * A * B + beta * C;
+
+        store(C, c + block_i * block_stride);
+    }
+
 }
 
 inline constexpr auto tiny_batched_gemm_3x3_rm = tiny_batched_gemm<float, 3, 256, Eigen::RowMajor>;
@@ -129,6 +216,41 @@ static void bench_tiny_batched_gemm_3x3_cm(benchmark::State &state) {
 BENCHMARK(bench_tiny_batched_gemm_3x3_cm)->Arg(1024 << 5);
 
 
+inline constexpr auto tiny_batched_gemm_3x3_rm_cls = tiny_batched_gemm_cls<float, 3, 256, Eigen::RowMajor>;
+
+static void bench_tiny_batched_gemm_3x3_rm_cls(benchmark::State &state) {
+    constexpr int dim = 3;
+    constexpr int size = dim * dim;
+    const auto n_matrices = static_cast<int>(state.range(0));
+
+
+    thrust::device_vector<float> a(size * n_matrices);
+    thrust::device_vector<float> b(size * n_matrices);
+    thrust::device_vector<float> c(size * n_matrices);
+
+    for (auto _: state) {
+        const auto threads = 256;
+        const auto blocks = (n_matrices + threads - 1) / threads;
+
+        float alpha = 1.0;
+        float beta = 0.0;
+
+
+        tiny_batched_gemm_3x3_rm_cls<<<blocks, threads>>>(
+            raw_pointer_cast(a.data()),
+            raw_pointer_cast(b.data()),
+            raw_pointer_cast(c.data()),
+            alpha,
+            beta,
+            n_matrices);
+
+
+        cudaDeviceSynchronize();
+    }
+}
+
+BENCHMARK(bench_tiny_batched_gemm_3x3_rm_cls)->Arg(1024 << 5);
+
 static void bench_tiny_batched_gemm_4x4_rm(benchmark::State &state) {
     constexpr int dim = 4;
     constexpr int size = dim * dim;
@@ -162,28 +284,6 @@ static void bench_tiny_batched_gemm_4x4_rm(benchmark::State &state) {
 
 BENCHMARK(bench_tiny_batched_gemm_4x4_rm)->Arg(1024 << 5);
 
-
-template <typename T, unsigned MatrixDim, unsigned BlockSize>
-__device__ __forceinline__
-void vectorized_copy(T* __restrict dst_ptr, const T* __restrict src_ptr, unsigned n_matrices) {
-
-    constexpr auto vector_size = 16 / sizeof(T); // vectors are 128 bits
-    constexpr auto matrix_size = MatrixDim * MatrixDim;
-    constexpr auto block_size = BlockSize;
-    constexpr auto smem_size = BlockSize * matrix_size;
-
-    // I'm just assuming that smem_size is an exact multiple of vector_size
-    const auto n_vector_loads = n_matrices / vector_size;
-
-    using Vector = cub::CubVector<T, vector_size>;
-
-    auto* in_ptr = reinterpret_cast<const Vector *>(src_ptr);
-    auto* out_ptr = reinterpret_cast<Vector *>(dst_ptr);
-
-    for (unsigned i=threadIdx.x; i<n_vector_loads; i+=blockDim.x) {
-        out_ptr[i] = in_ptr[i];
-    }
-}
 
 
 
