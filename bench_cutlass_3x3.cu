@@ -133,4 +133,4 @@ static void bench_cutlass_3x3_cm(benchmark::State &state) {
 
 }
 
-BENCHMARK(bench_cutlass_3x3_rm)->Arg(kNumMatrices);
+BENCHMARK(bench_cutlass_3x3_cm)->Arg(kNumMatrices);
