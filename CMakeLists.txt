@@ -16,7 +16,17 @@ find_package(NvidiaCutlass CONFIG)
 
 
 add_executable(bench_cublas
-        main.cu)
+        main.cu
+        bench_config.cuh
+        bench_cublas_3x3.cu
+        bench_small_batched_gemm_4x4.cu
+        bench_tiny_batched_gemm_3x3.cu
+        bench_tiny_batched_gemm_cls_3x3.cu
+        tiny_batched_gemm.cuh
+        tiny_batched_gemm_cls.cuh
+        small_batched_gemm.cuh
+        vectorized_copy.cuh
+)
 
 target_compile_options(bench_cublas PUBLIC
         $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
@@ -36,9 +46,8 @@ if (TARGET nvidia::cutlass::cutlass)
     # If CUTLASS is available, also build the cutlass benchmark
 
     target_link_libraries(bench_cublas PRIVATE nvidia::cutlass::cutlass)
-    target_compile_definitions(bench_cublas PRIVATE
-            USE_CUTLASS=1
-    )
+
+    target_sources(bench_cublas PRIVATE bench_cutlass_3x3.cu)
 
 endif()
 
