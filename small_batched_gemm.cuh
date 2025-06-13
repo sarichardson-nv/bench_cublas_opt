@@ -6,8 +6,6 @@
 
 #include <Eigen/Core>
 
-#include <cuda/std/cassert>
-
 #include "vectorized_copy.cuh"
 
 /*
@@ -17,6 +15,10 @@
  * cooperative thread groups. His original code was written in CUDA-C, so I've
  * translated it to C++ and templates and some other C++ niceties to simplify
  * the code.
+ *
+ * Unfortunately, there are some memory access issues with this at the moment that
+ * I have yet to fix. Nonetheless I think it is important to include this here as
+ * a demonstration of how larger matrices can be handled.
  */
 template<typename Sca, int MatrixDim, int NThreadsPerDim, int BlockSize=256, int Flags = Eigen::RowMajor>
 __global__ void small_batched_cooperative_gemm(Sca *__restrict__ a, Sca *__restrict__ b, Sca *__restrict__ c,
