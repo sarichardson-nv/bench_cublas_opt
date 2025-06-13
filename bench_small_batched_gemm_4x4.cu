@@ -13,7 +13,7 @@ inline constexpr auto small_batched_cooperative_gemm_4x4_cm = small_batched_coop
 
 static void bench_small_batched_cooperative_gemm_4x4_rm(benchmark::State &state) {
     constexpr int dim = 4;
-    constexpr int size = 16;
+    constexpr int size = dim*dim;
     auto n_matrices = static_cast<int>(state.range(0));
 
     thrust::device_vector<float> a(size * n_matrices, 1.0f);

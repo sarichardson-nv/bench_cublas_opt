@@ -6,6 +6,7 @@
 
 #include <Eigen/Core>
 
+#include <cuda/std/cassert>
 
 #include "vectorized_copy.cuh"
 
@@ -71,7 +72,10 @@ __global__ void small_batched_cooperative_gemm(Sca *__restrict__ a, Sca *__restr
 
 
     auto load = [&](Matrix& dst, const Sca* src) {
-        vectorized_copy<Sca, MatrixDim, BlockSize>(shared_mem, src, matrices_per_block);
+        // vectorized_copy<Sca, MatrixDim, BlockSize>(shared_mem, src, matrices_per_block);
+        for (auto i=threadIdx.x; i<shared_memory_size; i+=BlockSize) {
+            shared_mem[i] = src[i];
+        }
         __syncthreads();
         for (int i=0; i<matrix_dim; ++i) {
             for (int j=0; j<matrix_dim; ++j) {
@@ -92,7 +96,10 @@ __global__ void small_batched_cooperative_gemm(Sca *__restrict__ a, Sca *__restr
             }
         }
         __syncthreads();
-        vectorized_copy<Sca, MatrixDim, BlockSize>(dst, shared_mem, matrices_per_block);
+        // vectorized_copy<Sca, MatrixDim, BlockSize>(dst, shared_mem, matrices_per_block);
+        for (auto i=threadIdx.x; i<shared_memory_size; i+=BlockSize) {
+            dst[i] = shared_mem[i];
+        }
         __syncthreads();
     };
 
