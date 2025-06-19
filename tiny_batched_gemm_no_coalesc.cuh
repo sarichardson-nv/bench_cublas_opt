@@ -47,13 +47,12 @@ __global__ void tiny_batched_gemm_nocoal(Sca *__restrict__ a, Sca *__restrict__ 
         // __syncthreads();
         // Load(shared_mem.load_tmp).Load(c + block_i * block_stride, *reinterpret_cast<ThreadArray *>(C.data()));
         // __syncthreads();
-        A = ConstMap(a + block_i * block_stride);
-        B = ConstMap(b + block_i * block_stride);
-        C = ConstMap(c + block_i * block_stride);
-
+        A = ConstMap(a + block_i * block_stride + threadIdx.x * matrix_size);
+        B = ConstMap(b + block_i * block_stride + threadIdx.x * matrix_size);
+        C = ConstMap(c + block_i * block_stride + threadIdx.x * matrix_size);
         C = alpha * A * B + beta * C;
 
-        Map(c + block_i * block_stride) = C;
+        Map(c + block_i * block_stride + threadIdx.x * matrix_size) = C;
         // Store(shared_mem.store_tmp).Store(c + block_i * block_stride, *reinterpret_cast<ThreadArray *>(C.data()));
         // __syncthreads();
     }
