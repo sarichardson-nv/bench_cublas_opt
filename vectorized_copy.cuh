@@ -15,7 +15,6 @@ void vectorized_copy(T* __restrict dst_ptr, const T* __restrict src_ptr, unsigne
     constexpr auto block_size = BlockSize;
     constexpr auto smem_size = BlockSize * matrix_size;
 
-    // I'm just assuming that smem_size is an exact multiple of vector_size
     const auto n_vector_loads = n_matrices / vector_size;
 
     using Vector = cub::CubVector<T, vector_size>;
@@ -25,6 +24,11 @@ void vectorized_copy(T* __restrict dst_ptr, const T* __restrict src_ptr, unsigne
 
     for (unsigned i=threadIdx.x; i<n_vector_loads; i+=blockDim.x) {
         out_ptr[i] = in_ptr[i];
+    }
+
+    auto loaded = n_vector_loads * vector_size;
+    for (unsigned i=loaded; i<n_matrices; i+=blockDim.x) {
+        dst_ptr[i] = src_ptr[i];
     }
 }
 
