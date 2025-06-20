@@ -30,28 +30,42 @@ In all cases, we present results of the benchmark on a batch of size 8192. We te
 consumer RTX 3070Ti and a A100. The following results are generated on a RTX 3070Ti (CUDA toolkit 12.9.86).
 
 ```text
-----------------------------------------------------------------------------------
-Benchmark                                        Time             CPU   Iterations
-----------------------------------------------------------------------------------
-bench_cublas_3x3_rm/8192                    455909 ns       454029 ns        10000
-bench_cublas_3x3_cm/8192                     29025 ns        28892 ns        24844
-bench_tiny_batched_gemm_3x3_rm/8192           6250 ns         6221 ns       112498
-bench_tiny_batched_gemm_3x3_cm/8192           6294 ns         6258 ns       113590
-bench_tiny_batched_gemm_3x3_rm_cls/8192       5692 ns         5665 ns       123229
-bench_cutlass_3x3_rm/8192                   413159 ns       411386 ns        10000
-bench_cutlass_3x3_rm/8192                   420357 ns       418251 ns        10000
+-------------------------------------------------------------------------------------
+Benchmark                                           Time             CPU   Iterations
+-------------------------------------------------------------------------------------
+bench_cublas_3x3_rm/8192                       470780 ns       468736 ns        10000
+bench_cublas_3x3_cm/8192                        29709 ns        29576 ns        25122
+bench_tiny_batched_gemm_3x3_rm/8192              6272 ns         6246 ns       108262
+bench_tiny_batched_gemm_3x3_cm/8192              6475 ns         6448 ns       112720
+bench_tiny_batched_gemm_3x3_rm_cls/8192          6989 ns         6962 ns       100811
+bench_tiny_batched_gemm_nocoal_3x3_rm/8192       7938 ns         7905 ns        88777
+bench_tiny_batched_gemm_nocoal_3x3_cm/8192       8004 ns         7968 ns        85878
+bench_cutlass_3x3_rm/8192                      425922 ns       424196 ns        10000
+bench_cutlass_3x3_cm/8192                      426753 ns       425063 ns        10000
 ```
 
 The results on the A100 are below (CUDA toolkit 12.6.85). CUTLASS benchmarks are omitted for now.
 
 ```text
-----------------------------------------------------------------------------------
-Benchmark                                        Time             CPU   Iterations
-----------------------------------------------------------------------------------
-bench_cublas_3x3_rm/8192                    285332 ns       285326 ns        11016
-bench_cublas_3x3_cm/8192                    117959 ns       117951 ns        10000
-bench_tiny_batched_gemm_3x3_rm/8192          11013 ns        11013 ns        63856
-bench_tiny_batched_gemm_3x3_cm/8192          11013 ns        11012 ns        63838
-bench_tiny_batched_gemm_3x3_rm_cls/8192       9490 ns         9489 ns        73529
+--------------------------------------------------------------------------------------
+Benchmark                                            Time             CPU   Iterations
+--------------------------------------------------------------------------------------
+bench_cublas_3x3_rm/32768                      1107498 ns      1107444 ns         9000
+bench_cublas_3x3_cm/32768                       464113 ns       464013 ns        10000
+bench_tiny_batched_gemm_3x3_rm/32768             17567 ns        17565 ns        39816
+bench_tiny_batched_gemm_3x3_cm/32768             17457 ns        17453 ns        39870
+bench_tiny_batched_gemm_3x3_rm_cls/32768         18553 ns        18550 ns        37674
+bench_tiny_batched_gemm_nocoal_3x3_rm/32768      35871 ns        35861 ns        19359
+bench_tiny_batched_gemm_nocoal_3x3_cm/32768      35976 ns        35969 ns        19165
 ```
 
+
+
+## Updates
+
+# 20-6-25
+I added two new benchmarks with the additional "nocoal" suffix, that do not make use of shared memory to efficiently
+load the matrix data using coalesced loads. These are obviously slower. I also spotted a mistake in the 
+custom-load-store (cls) kernel whereby it was loading a smaller number of elements. I've corrected this and this has had
+the effect of making it slower than the cub load/store implementations (marginally). Benchmarking seems to suggest that
+with the vectorized loads we achieve approximately half the compute throughput. I'm not sure what causes this.
