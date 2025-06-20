@@ -28,7 +28,7 @@ __global__ void tiny_batched_gemm_cls(Sca *__restrict__ a, Sca *__restrict__ b, 
     Matrix C;
 
     auto load = [&](Matrix& dst, const Sca* ptr) {
-        vectorized_copy<float, MatrixDim, BlockSize>(shared_mem, ptr, BlockSize);
+        vectorized_copy<float, MatrixDim, BlockSize>(shared_mem, ptr, BlockSize*matrix_size);
 
         __syncthreads();
         for (int i=0; i<MatrixDim; ++i) {
@@ -47,7 +47,7 @@ __global__ void tiny_batched_gemm_cls(Sca *__restrict__ a, Sca *__restrict__ b, 
         }
         __syncthreads();
 
-        vectorized_copy<float, MatrixDim, BlockSize>(dst, shared_mem, BlockSize);
+        vectorized_copy<float, MatrixDim, BlockSize>(dst, shared_mem, BlockSize*matrix_size);
         __syncthreads();
     };
 
