@@ -7,7 +7,7 @@
 
 #include "bench_config.cuh"
 
-static void bench_cutlass_3x3_rm(benchmark::State &state) {
+static void DISABLED_bench_cutlass_3x3_rm(benchmark::State &state) {
 
     // CUTLASS GEMM Configuration (You can adjust these parameters)
     using CutlassBatchedGemm = cutlass::gemm::device::GemmBatched<
@@ -68,11 +68,11 @@ static void bench_cutlass_3x3_rm(benchmark::State &state) {
 
 }
 
-BENCHMARK(bench_cutlass_3x3_rm)->Arg(kNumMatrices);
+BENCHMARK(DISABLED_bench_cutlass_3x3_rm)->Arg(kNumMatrices);
 
 
 
-static void bench_cutlass_3x3_cm(benchmark::State &state) {
+static void DISABLED_bench_cutlass_3x3_cm(benchmark::State &state) {
 
     // CUTLASS GEMM Configuration (You can adjust these parameters)
     using CutlassBatchedGemm = cutlass::gemm::device::GemmBatched<
@@ -84,7 +84,7 @@ static void bench_cutlass_3x3_cm(benchmark::State &state) {
         cutlass::layout::ColumnMajor>;         // Layout of C/D matrix
 
 
-   constexpr int matrixDim = 3; // Matrix dimensions: 3x3
+    constexpr int matrixDim = 3; // Matrix dimensions: 3x3
     constexpr int matrix_size = matrixDim * matrixDim;
     const int n_matrices = static_cast<int>(state.range(0));
 
@@ -133,4 +133,4 @@ static void bench_cutlass_3x3_cm(benchmark::State &state) {
 
 }
 
-BENCHMARK(bench_cutlass_3x3_cm)->Arg(kNumMatrices);
+BENCHMARK(DISABLED_bench_cutlass_3x3_cm)->Arg(kNumMatrices);

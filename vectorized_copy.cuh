@@ -19,15 +19,15 @@ void vectorized_copy(T* __restrict dst_ptr, const T* __restrict src_ptr, unsigne
 
     using Vector = cub::CubVector<T, vector_size>;
 
-    auto* in_ptr = reinterpret_cast<const Vector *>(src_ptr);
-    auto* out_ptr = reinterpret_cast<Vector *>(dst_ptr);
-
-    for (unsigned i=threadIdx.x; i<n_vector_loads; i+=blockDim.x) {
-        out_ptr[i] = in_ptr[i];
-    }
-
-    auto loaded = n_vector_loads * vector_size;
-    for (unsigned i=loaded; i<n_matrices; i+=blockDim.x) {
+    // auto* in_ptr = reinterpret_cast<const Vector *>(src_ptr);
+    // auto* out_ptr = reinterpret_cast<Vector *>(dst_ptr);
+    //
+    // for (unsigned i=threadIdx.x; i<n_vector_loads; i+=blockDim.x) {
+    //     out_ptr[i] = in_ptr[i];
+    // }
+    //
+    // auto loaded = n_vector_loads * vector_size;
+    for (unsigned i=threadIdx.x; i<n_matrices; i+=blockDim.x) {
         dst_ptr[i] = src_ptr[i];
     }
 }

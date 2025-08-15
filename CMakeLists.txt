@@ -18,16 +18,26 @@ find_package(NvidiaCutlass CONFIG)
 add_executable(bench_cublas
         main.cu
         bench_config.cuh
-        bench_cublas_3x3.cu
-#        bench_small_batched_gemm_4x4.cu
-        bench_tiny_batched_gemm_3x3.cu
-        bench_tiny_batched_gemm_cls_3x3.cu
-        bench_tiny_batched_gemm_3x3_nocoal.cu
         tiny_batched_gemm.cuh
         tiny_batched_gemm_cls.cuh
         tiny_batched_gemm_no_coalesc.cuh
-#        small_batched_gemm.cuh
-        vectorized_copy.cuh
+        small_batched_gemm.cuh
+#        vectorized_copy.cuh
+#        bench_tiny_batched_gemm_3x3.cu
+#        bench_tiny_batched_gemm_cls_3x3.cu
+#        bench_cublas_3x3.cu
+#        bench_tiny_batched_gemm_3x3_nocoal.cu
+#        bench_cublas_3x3.cu
+        bench_tiny_batched_gemm_4x4.cu
+        bench_small_batched_gemm_4x4.cu
+        bench_cublas_4x4.cu
+        bench_tiny_batched_gemm_6x6.cu
+        bench_small_batched_gemm_6x6.cu
+        bench_cublas_6x6.cu
+        recursive_matrix.cuh
+        bench_small_batched_gemm_12x12.cu
+        bench_cublas_12x12.cu
+
 )
 
 target_compile_options(bench_cublas PUBLIC

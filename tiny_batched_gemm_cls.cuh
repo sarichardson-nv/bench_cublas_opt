@@ -39,13 +39,23 @@ __global__ void tiny_batched_gemm_cls(Sca *__restrict__ a, Sca *__restrict__ b, 
         __syncthreads();
     };
 
-    auto store = [&](const Matrix& src, Sca* dst) {
+    auto store_smem = [&](const Matrix& src) {
         for (int i=0; i<MatrixDim; ++i) {
             for (int j=0; j<MatrixDim; ++j){
                 shared_mem[threadIdx.x * matrix_size + i * matrix_dim + j] = src(i, j);
             }
         }
         __syncthreads();
+    };
+
+    auto store = [&](const Matrix& src, Sca* dst) {
+        // for (int i=0; i<MatrixDim; ++i) {
+        //     for (int j=0; j<MatrixDim; ++j){
+        //         shared_mem[threadIdx.x * matrix_size + i * matrix_dim + j] = src(i, j);
+        //     }
+        // }
+        // __syncthreads();
+        store_smem(src);
 
         vectorized_copy<float, MatrixDim, BlockSize>(dst, shared_mem, BlockSize*matrix_size);
         __syncthreads();
@@ -58,11 +68,14 @@ __global__ void tiny_batched_gemm_cls(Sca *__restrict__ a, Sca *__restrict__ b, 
     for (unsigned block_i = blockIdx.x; block_i < n_blocks; block_i += gridDim.x) {
         load(A, a + block_i * block_stride);
         load(B, b + block_i * block_stride);
-        load(C, c + block_i * block_stride);
+        // load(C, c + block_i * block_stride);
 
-        C = alpha * A * B + beta * C;
+        C = alpha * A * B;
 
-        store(C, c + block_i * block_stride);
+        store_smem(C);
+        for (unsigned i = threadIdx.x; i < BlockSize * matrix_size; i += blockDim.x) {
+            c[block_i * block_stride + i] = beta * c[block_i*block_stride + i] + alpha * shared_mem[i];
+        }
     }
 
 }
