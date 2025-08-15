@@ -63,6 +63,10 @@ bench_tiny_batched_gemm_nocoal_3x3_cm/32768      35976 ns        35969 ns       
 
 ## Updates
 
+# 15-8-25
+I add a large number of new benchmarks to tease out some of the performance characteristics for larger matrices.
+
+
 # 20-6-25
 I added two new benchmarks with the additional "nocoal" suffix, that do not make use of shared memory to efficiently
 load the matrix data using coalesced loads. These are obviously slower. I also spotted a mistake in the 

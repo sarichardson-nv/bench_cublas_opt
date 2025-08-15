@@ -9,10 +9,10 @@
 
 
 #include "bench_config.cuh"
-
-
-// static void bench_cublas_4x4_rm(benchmark::State &state) {
-//     constexpr int dim = 4;
+//
+//
+// static void bench_cublas_12x12_rm(benchmark::State &state) {
+//     constexpr int dim = 12;
 //     constexpr int size = dim*dim;
 //     auto n_matrices = static_cast<int>(state.range(0));
 //     using Index = int;
@@ -66,10 +66,10 @@
 //     cublasDestroy(handle);
 // }
 //
-// BENCHMARK(bench_cublas_4x4_rm)->Arg(kNumMatrices);
+// BENCHMARK(bench_cublas_12x12_rm)->Arg(kNumMatrices);
 
-static void bench_cublas_4x4_cm(benchmark::State &state) {
-    constexpr int dim = 4;
+static void bench_cublas_16x16_cm(benchmark::State &state) {
+    constexpr int dim = 16;
     constexpr int size = dim*dim;
     auto n_matrices = static_cast<int>(state.range(0));
     using Index = int;
@@ -123,4 +123,4 @@ static void bench_cublas_4x4_cm(benchmark::State &state) {
     cublasDestroy(handle);
 }
 
-BENCHMARK(bench_cublas_4x4_cm)->Arg(kNumMatrices);
+BENCHMARK(bench_cublas_16x16_cm)->Arg(kNumMatrices);

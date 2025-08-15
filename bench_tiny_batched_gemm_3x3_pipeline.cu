@@ -5,15 +5,14 @@
 #include <thrust/device_vector.h>
 
 #include "bench_config.cuh"
-#include "tiny_batched_gemm.cuh"
-#include "tiny_batched_gemm_cls.cuh"
+#include "tiny_batched_gemm_pipeline.cuh"
 
 
-inline constexpr auto tiny_batched_gemm_4x4_rm = tiny_batched_gemm_cls<float, 4, 256, Eigen::RowMajor>;
-inline constexpr auto tiny_batched_gemm_4x4_cm = tiny_batched_gemm_cls<float, 4, 256, Eigen::ColMajor>;
+inline constexpr auto gemm_rm = tiny_batched_gemm_pipeline<float, 3, 256, Eigen::RowMajor>;
+inline constexpr auto gemm_cm = tiny_batched_gemm_pipeline<float, 3, 256, Eigen::ColMajor>;
 
-static void bench_tiny_batched_gemm_4x4_rm(benchmark::State &state) {
-    constexpr int dim = 4;
+static void bench_tiny_batched_gemm_3x3_pipeline_rm(benchmark::State &state) {
+    constexpr int dim = 3;
     constexpr int size = dim * dim;
     const auto n_matrices = static_cast<int>(state.range(0));
 
@@ -30,7 +29,7 @@ static void bench_tiny_batched_gemm_4x4_rm(benchmark::State &state) {
         float beta = 0.0;
 
 
-        tiny_batched_gemm_4x4_rm<<<blocks, threads>>>(
+        gemm_rm<<<blocks, threads>>>(
             raw_pointer_cast(a.data()),
             raw_pointer_cast(b.data()),
             raw_pointer_cast(c.data()),
@@ -43,11 +42,11 @@ static void bench_tiny_batched_gemm_4x4_rm(benchmark::State &state) {
     }
 }
 
-BENCHMARK(bench_tiny_batched_gemm_4x4_rm)->Arg(kNumMatrices);
+BENCHMARK(bench_tiny_batched_gemm_3x3_pipeline_rm)->Arg(kNumMatrices);
+
 //
-//
-// static void bench_tiny_batched_gemm_4x4_cm(benchmark::State &state) {
-//     constexpr int dim = 4;
+// static void bench_tiny_batched_gemm_3x3_cm(benchmark::State &state) {
+//     constexpr int dim = 3;
 //     constexpr int size = dim * dim;
 //     const auto n_matrices = static_cast<int>(state.range(0));
 //
@@ -64,7 +63,7 @@ BENCHMARK(bench_tiny_batched_gemm_4x4_rm)->Arg(kNumMatrices);
 //         float beta = 0.0;
 //
 //
-//         tiny_batched_gemm_4x4_cm<<<blocks, threads>>>(
+//         tiny_batched_gemm_3x3_cm<<<blocks, threads>>>(
 //             raw_pointer_cast(a.data()),
 //             raw_pointer_cast(b.data()),
 //             raw_pointer_cast(c.data()),
@@ -77,4 +76,4 @@ BENCHMARK(bench_tiny_batched_gemm_4x4_rm)->Arg(kNumMatrices);
 //     }
 // }
 //
-// BENCHMARK(bench_tiny_batched_gemm_4x4_cm)->Arg(kNumMatrices);
+// BENCHMARK(bench_tiny_batched_gemm_3x3_cm)->Arg(kNumMatrices);

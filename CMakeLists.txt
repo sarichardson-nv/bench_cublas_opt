@@ -24,10 +24,11 @@ add_executable(bench_cublas
         small_batched_gemm.cuh
 #        vectorized_copy.cuh
 #        bench_tiny_batched_gemm_3x3.cu
-#        bench_tiny_batched_gemm_cls_3x3.cu
+        bench_tiny_batched_gemm_cls_3x3.cu
 #        bench_cublas_3x3.cu
 #        bench_tiny_batched_gemm_3x3_nocoal.cu
 #        bench_cublas_3x3.cu
+        bench_tiny_batched_gemm_3x3_pipeline.cu
         bench_tiny_batched_gemm_4x4.cu
         bench_small_batched_gemm_4x4.cu
         bench_cublas_4x4.cu
@@ -37,11 +38,14 @@ add_executable(bench_cublas
         recursive_matrix.cuh
         bench_small_batched_gemm_12x12.cu
         bench_cublas_12x12.cu
-
+        bench_small_batched_gemm_16x16.cu
+        bench_cublas_16x16.cu
 )
 
 target_compile_options(bench_cublas PUBLIC
-        $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+        $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --generate-line-info>)
+
+
 
 
 set_target_properties(bench_cublas PROPERTIES
