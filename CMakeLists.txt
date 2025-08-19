@@ -31,6 +31,7 @@ add_executable(bench_cublas
         bench_tiny_batched_gemm_3x3_pipeline.cu
         bench_tiny_batched_gemm_4x4.cu
         bench_small_batched_gemm_4x4.cu
+        bench_small_batched_gemm_pipelined_4x4.cu
         bench_cublas_4x4.cu
         bench_tiny_batched_gemm_6x6.cu
         bench_small_batched_gemm_6x6.cu
