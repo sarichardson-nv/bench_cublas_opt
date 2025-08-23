@@ -9,7 +9,6 @@
 #include <cuda/pipeline>
 #include <cooperative_groups.h>
 #include <cuda/std/functional>
-#include <cutlass/matrix.h>
 
 
 #pragma nv_suppress static_var_with_dynamic_init
