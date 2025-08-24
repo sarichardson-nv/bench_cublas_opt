@@ -94,7 +94,7 @@ __global__ void small_batched_cooperative_pipelined_gemm(Sca *__restrict__ a, Sc
 
         auto a_seq = seq % 2;
         auto b_seq = (seq + 1) % 2;
-        ++seq;
+        // ++seq;
 
         pipeline.producer_acquire();
         cuda::memcpy_async(this_block,
@@ -123,14 +123,14 @@ __global__ void small_batched_cooperative_pipelined_gemm(Sca *__restrict__ a, Sc
         }
         pipeline.consumer_release();
 
-        pipeline.producer_acquire();
-        cuda::memcpy_async(this_block,
-            &shared_mem[a_seq][0],
-            start_of_c_block,
-            sizeof(Sca) * matrix_size * matrices_remaining,
-            pipeline
-            );
-        pipeline.producer_commit();
+        // pipeline.producer_acquire();
+        // cuda::memcpy_async(this_block,
+        //     &shared_mem[a_seq][0],
+        //     start_of_c_block,
+        //     sizeof(Sca) * matrix_size * matrices_remaining,
+        //     pipeline
+        //     );
+        // pipeline.producer_commit();
 
 
         pipeline.consumer_wait();
@@ -163,13 +163,16 @@ __global__ void small_batched_cooperative_pipelined_gemm(Sca *__restrict__ a, Sc
         } // end of block loop
 
 
-        pipeline.consumer_wait();
-        auto *c_loc = &shared_mem[a_seq][matrix_idx * matrix_size];
+        // pipeline.consumer_wait();
+        // auto *c_loc = &shared_mem[a_seq][matrix_idx * matrix_size];
         auto *out = start_of_c_block + matrix_idx * matrix_size;
         for (int i=0; i<tile_dim; ++i) {
             for (int j=0; j<tile_dim; ++j) {
-                auto& c_val = c_loc[matrix_dim*(tile_dim * tile_row + i) + (tile_dim*tile_col + j)];
-                out[matrix_dim * (tile_dim * tile_row + i) + tile_col + j] = alpha * c_val + beta * C_tile(i, j);
+                auto& out_val = out[matrix_dim*(tile_dim * tile_row + i) + (tile_dim*tile_col + j)];
+                auto c_val = alpha*out_val;
+                // auto c_val = alpha * c_loc[matrix_dim*(tile_dim * tile_row + i) + (tile_dim*tile_col + j)];
+                // out[matrix_dim * (tile_dim * tile_row + i) + tile_col + j] = alpha * c_val + beta * C_tile(i, j);
+                out_val = c_val + beta * C_tile(i, j);
             }
         }
         //
@@ -179,7 +182,7 @@ __global__ void small_batched_cooperative_pipelined_gemm(Sca *__restrict__ a, Sc
         //     start_of_c_block[i] = shared_mem[a_seq][i];
         // }
 
-        pipeline.consumer_release();
+        // pipeline.consumer_release();
 
     }
 }

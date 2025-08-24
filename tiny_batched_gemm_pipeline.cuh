@@ -82,8 +82,10 @@ __global__ void tiny_batched_gemm_pipeline(Sca *__restrict__ a, Sca *__restrict_
                 B_tile(i, j) = b_loc[i * matrix_dim + j];
             }
         }
+        // pipeline.consumer_release();
 
         C_tile = A_tile * B_tile;
+
 
         for (int i=0; i<matrix_dim; ++i) {
             for (int j=0; j<matrix_dim; ++j) {
@@ -98,6 +100,17 @@ __global__ void tiny_batched_gemm_pipeline(Sca *__restrict__ a, Sca *__restrict_
         }
 
         pipeline.consumer_release();
+
+        // auto* out = c + block_begin * matrix_size;
+        // for (int i=0; i<matrix_dim; ++i) {
+        //     for (int j=0; j<matrix_dim; ++j) {
+        //         auto& out_val = out[i * matrix_dim + j];
+        //         auto c_val = beta * out_val;
+        //         // out_val = beta * out_val + b_loc[i * matrix_dim + j];
+        //         // b_loc[i * matrix_dim + j] = alpha * C_tile(i, j);
+        //         out_val = c_val + alpha * C_tile(i, j);
+        //     }
+        // }
 
 
     }

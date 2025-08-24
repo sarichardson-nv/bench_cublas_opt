@@ -37,11 +37,14 @@ add_executable(bench_cublas
         bench_cublas_4x4.cu
         bench_tiny_batched_gemm_6x6.cu
         bench_small_batched_gemm_6x6.cu
+        bench_small_batched_gemm_pipelined_6x6.cu
         bench_cublas_6x6.cu
         recursive_matrix.cuh
         bench_small_batched_gemm_12x12.cu
+        bench_small_batched_gemm_pipelined_12x12.cu
         bench_cublas_12x12.cu
         bench_small_batched_gemm_16x16.cu
+        bench_small_batched_gemm_pipelined_16x16.cu
         bench_cublas_16x16.cu
 )
 
