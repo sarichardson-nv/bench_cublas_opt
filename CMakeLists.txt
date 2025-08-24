@@ -22,6 +22,8 @@ add_executable(bench_cublas
         tiny_batched_gemm_cls.cuh
         tiny_batched_gemm_no_coalesc.cuh
         small_batched_gemm.cuh
+        bench_tiny_batched_gemm_2x2.cu
+        bench_tiny_batched_gemm_2x2_pipeline.cu
 #        vectorized_copy.cuh
 #        bench_tiny_batched_gemm_3x3.cu
         bench_tiny_batched_gemm_cls_3x3.cu
