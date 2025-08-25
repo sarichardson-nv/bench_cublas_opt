@@ -2,14 +2,16 @@ cmake_minimum_required(VERSION 3.31)
 project(bench_cublas CUDA CXX)
 
 set(CMAKE_CUDA_STANDARD 20)
-
+set(benchmark_DIR /home/scratch.sarichardson_gpu/oxford-math/benchmark/build)
+set(Eigen3_DIR /home/scratch.sarichardson_gpu/oxford-math/eigen-3.4.0/eigen-3.4.0/cmake)
+set(CMAKE_MODULE_PATH /home/scratch.sarichardson_gpu/oxford-math/eigen-3.4.0/eigen-3.4.0)
 
 find_package(Threads REQUIRED)
 
 find_package(benchmark CONFIG REQUIRED)
 find_package(CUDAToolkit REQUIRED)
-find_package(Eigen3 CONFIG REQUIRED)
-find_package(Thrust CONFIG REQUIRED)
+include_directories(/home/scratch.sarichardson_gpu/oxford-math/eigen-3.4.0/eigen-3.4.0)
+
 
 find_package(NvidiaCutlass CONFIG)
 
@@ -22,14 +24,12 @@ add_executable(bench_cublas
         tiny_batched_gemm_cls.cuh
         tiny_batched_gemm_no_coalesc.cuh
         small_batched_gemm.cuh
-        bench_tiny_batched_gemm_2x2.cu
-        bench_tiny_batched_gemm_2x2_pipeline.cu
-#        vectorized_copy.cuh
-#        bench_tiny_batched_gemm_3x3.cu
+        vectorized_copy.cuh
+        bench_tiny_batched_gemm_3x3.cu
         bench_tiny_batched_gemm_cls_3x3.cu
-#        bench_cublas_3x3.cu
-#        bench_tiny_batched_gemm_3x3_nocoal.cu
-#        bench_cublas_3x3.cu
+        bench_cublas_3x3.cu
+        bench_tiny_batched_gemm_3x3_nocoal.cu
+        bench_cublas_3x3.cu
         bench_tiny_batched_gemm_3x3_pipeline.cu
         bench_tiny_batched_gemm_4x4.cu
         bench_small_batched_gemm_4x4.cu
@@ -37,19 +37,16 @@ add_executable(bench_cublas
         bench_cublas_4x4.cu
         bench_tiny_batched_gemm_6x6.cu
         bench_small_batched_gemm_6x6.cu
-        bench_small_batched_gemm_pipelined_6x6.cu
         bench_cublas_6x6.cu
         recursive_matrix.cuh
         bench_small_batched_gemm_12x12.cu
-        bench_small_batched_gemm_pipelined_12x12.cu
         bench_cublas_12x12.cu
         bench_small_batched_gemm_16x16.cu
-        bench_small_batched_gemm_pipelined_16x16.cu
         bench_cublas_16x16.cu
 )
 
 target_compile_options(bench_cublas PUBLIC
-        $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --generate-line-info>)
+        $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --generate-line-info -arch=sm_86 --use_fast_math -maxrregcount 32>)
 
 
 
@@ -59,9 +56,7 @@ set_target_properties(bench_cublas PROPERTIES
 
 target_link_libraries(bench_cublas PRIVATE
         benchmark::benchmark
-        Eigen3::Eigen
         CUDA::cublas
-        Thrust::Thrust
 )
 
 if (TARGET nvidia::cutlass::cutlass)
@@ -75,6 +70,3 @@ endif()
 
 
 add_executable(understanding_loaders understand_cub_loaders.cu)
-
-
-target_link_libraries(understanding_loaders PRIVATE Thrust::Thrust)
